@@ -13,10 +13,22 @@ export async function connectToDatabase() {
   if (!process.env.MONGODB_URI) {
     throw new Error("MONGODB_URI is not configured.");
   }
-  if (cached.conn) return cached.conn;
+  if (cached.conn && cached.conn.connection.readyState === 1) return cached.conn;
   if (!cached.promise) {
-    cached.promise = mongoose.connect(process.env.MONGODB_URI, { bufferCommands: false });
+    cached.promise = mongoose
+      .connect(process.env.MONGODB_URI, {
+        bufferCommands: false,
+        serverSelectionTimeoutMS: 2000,
+      })
+      .then((m) => {
+        cached.conn = m;
+        return m;
+      })
+      .catch((err) => {
+        cached.promise = null;
+        cached.conn = null;
+        throw err;
+      });
   }
-  cached.conn = await cached.promise;
-  return cached.conn;
+  return cached.promise;
 }

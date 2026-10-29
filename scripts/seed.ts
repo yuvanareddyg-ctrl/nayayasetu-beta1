@@ -8,7 +8,13 @@ import { PrecedentModel } from "../models/Precedent";
 
 async function seed() {
   if (!process.env.MONGODB_URI) throw new Error("MONGODB_URI is required to seed MongoDB. Add it to .env.local first.");
-  await connectToDatabase();
+  try {
+    await connectToDatabase();
+  } catch (error) {
+    console.error(`\n❌ Could not connect to MongoDB at: ${process.env.MONGODB_URI}`);
+    console.error(`Please ensure MongoDB is running or update MONGODB_URI in .env.local.\n(${error instanceof Error ? error.message : error})`);
+    process.exit(1);
+  }
 
   const caseIdMap = new Map<string, string>();
   for (const item of sampleCases) {

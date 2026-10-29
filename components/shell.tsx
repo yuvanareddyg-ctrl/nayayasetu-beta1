@@ -9,6 +9,7 @@ const navigation = [
   { href: "/ai-workspace", label: "Review desk", mark: "✦" },
   { href: "/cause-list", label: "Cause list", mark: "≡" },
   { href: "/drafting", label: "Drafting studio", mark: "▤" },
+  { href: "/people", label: "Lawyers & clients", mark: "◉" },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {

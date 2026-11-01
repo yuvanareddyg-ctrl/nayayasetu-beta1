@@ -1,21 +1,13 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { verifyAdminToken, ADMIN_COOKIE } from "@/lib/auth";
-import { connectToDatabase } from "@/lib/db";
+import { connectToDatabase, hasMongoUri } from "@/lib/db";
 import { LoginRecordModel } from "@/models/LoginRecord";
 import { loginRecordQuerySchema } from "@/lib/auth-validation";
+import { sampleLoginRecords } from "@/lib/sample-data";
 
 export const runtime = "nodejs";
 
-/**
- * GET /api/admin/login-records
- *
- * Returns paginated, searchable login records. Protected by JWT cookie.
- * Query params:
- *   - page    (default 1)
- *   - limit   (default 20, max 100)
- *   - search  (optional – filters username or email, case-insensitive)
- */
 export async function GET(request: Request) {
   // ── Auth guard ──────────────────────────────────────────────────────────────
   const cookieStore = await cookies();
@@ -39,31 +31,63 @@ export async function GET(request: Request) {
   const { page, limit, search } = parsed.data;
 
   try {
-    await connectToDatabase();
+    if (hasMongoUri()) {
+      try {
+        await connectToDatabase();
+        const filter =
+          search && search.length > 0
+            ? {
+                $or: [
+                  { username: { $regex: search, $options: "i" } },
+                  { email: { $regex: search, $options: "i" } },
+                ],
+              }
+            : {};
 
-    // Build filter
-    const filter =
-      search && search.length > 0
-        ? {
-            $or: [
-              { username: { $regex: search, $options: "i" } },
-              { email: { $regex: search, $options: "i" } },
-            ],
-          }
-        : {};
+        const [records, total] = await Promise.all([
+          LoginRecordModel.find(filter)
+            .sort({ loginAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .lean(),
+          LoginRecordModel.countDocuments(filter),
+        ]);
 
-    const [records, total] = await Promise.all([
-      LoginRecordModel.find(filter)
-        .sort({ loginAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean(),
-      LoginRecordModel.countDocuments(filter),
-    ]);
+        return NextResponse.json({
+          records: records.map((r) => ({
+            id: String(r._id),
+            username: r.username,
+            email: r.email,
+            loginAt: r.loginAt,
+            ipAddress: r.ipAddress ?? null,
+          })),
+          pagination: {
+            total,
+            page,
+            limit,
+            totalPages: Math.max(1, Math.ceil(total / limit)),
+          },
+        });
+      } catch (dbErr) {
+        console.warn("[/api/admin/login-records] Fallback to in-memory audit:", dbErr);
+      }
+    }
+
+    // In-memory fallback
+    let filtered = sampleLoginRecords;
+    if (search && search.length > 0) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(
+        (r) => r.username.toLowerCase().includes(q) || r.email.toLowerCase().includes(q)
+      );
+    }
+
+    const total = filtered.length;
+    const paginated = filtered.slice((page - 1) * limit, page * limit);
 
     return NextResponse.json({
-      records: records.map((r) => ({
-        id: String(r._id),
+      records: paginated.map((r) => ({
+        id: r._id,
         username: r.username,
         email: r.email,
         loginAt: r.loginAt,
@@ -73,7 +97,7 @@ export async function GET(request: Request) {
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.max(1, Math.ceil(total / limit)),
       },
     });
   } catch (error) {

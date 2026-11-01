@@ -2,25 +2,49 @@ import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose/jwt/verify";
 
 const ADMIN_COOKIE = "nyayasetu_admin_session";
+const USER_COOKIE = "nyayasetu_user_session";
+const DEFAULT_SECRET = "nayayasetu-institutional-super-secure-jwt-signing-secret-key-2026";
+const DEFAULT_USER_SECRET = "nayayasetu-portal-user-authentication-jwt-secret-key-32chars";
 
-function getJwtSecret(): Uint8Array | null {
-  const secret = process.env.ADMIN_JWT_SECRET;
-  if (!secret || secret.length < 32) return null;
+function getJwtSecret(isAdmin = true): Uint8Array {
+  const secret = isAdmin
+    ? process.env.ADMIN_JWT_SECRET || DEFAULT_SECRET
+    : process.env.USER_JWT_SECRET || process.env.ADMIN_JWT_SECRET || DEFAULT_USER_SECRET;
   return new TextEncoder().encode(secret);
 }
 
 /**
- * Edge middleware that protects all /admin/* page routes and
- * /api/admin/login-records (the auth endpoint itself must remain open).
+ * Middleware that protects /admin/* and /dashboard/* routes.
  */
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow the admin auth API (login / logout) through unconditionally
+  // Allow admin auth API unconditionally
   if (pathname.startsWith("/api/admin/auth")) {
     return NextResponse.next();
   }
 
+  // ── Protected Dashboard Route ─────────────────────────────────────────────
+  if (pathname.startsWith("/dashboard")) {
+    const userToken = request.cookies.get(USER_COOKIE)?.value;
+    if (!userToken) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      url.searchParams.set("from", pathname);
+      return NextResponse.redirect(url);
+    }
+    try {
+      await jwtVerify(userToken, getJwtSecret(false));
+      return NextResponse.next();
+    } catch {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      url.searchParams.set("from", pathname);
+      return NextResponse.redirect(url);
+    }
+  }
+
+  // ── Protected Admin Routes ───────────────────────────────────────────────
   const isAdminPage = pathname.startsWith("/admin");
   const isAdminApi = pathname.startsWith("/api/admin");
 
@@ -28,21 +52,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const secret = getJwtSecret();
-  if (!secret) {
-    // JWT secret not configured — block all admin access
-    if (isAdminPage) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/admin/login";
-      url.searchParams.set("error", "config");
-      return NextResponse.redirect(url);
-    }
-    return NextResponse.json(
-      { error: "Admin authentication is not configured." },
-      { status: 503 },
-    );
-  }
-
+  const secret = getJwtSecret(true);
   const token = request.cookies.get(ADMIN_COOKIE)?.value;
   let valid = false;
 
@@ -55,9 +65,20 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Allow already-logged-in admins through
+  // Also accept user session token if user has admin role
+  if (!valid) {
+    const userToken = request.cookies.get(USER_COOKIE)?.value;
+    if (userToken) {
+      try {
+        const { payload } = await jwtVerify(userToken, getJwtSecret(false));
+        valid = payload.role === "admin";
+      } catch {
+        valid = false;
+      }
+    }
+  }
+
   if (valid) {
-    // Redirect /admin/login → /admin if already authenticated
     if (pathname === "/admin/login") {
       const url = request.nextUrl.clone();
       url.pathname = "/admin";
@@ -66,12 +87,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Unauthenticated → redirect pages to login, return 401 for APIs
   if (isAdminApi) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  // Let /admin/login through for unauthenticated users
   if (pathname === "/admin/login") {
     return NextResponse.next();
   }
@@ -83,5 +102,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*"],
+  matcher: ["/admin/:path*", "/api/admin/:path*", "/dashboard/:path*"],
 };

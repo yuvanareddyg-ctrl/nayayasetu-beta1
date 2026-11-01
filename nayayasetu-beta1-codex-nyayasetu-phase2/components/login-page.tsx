@@ -2,69 +2,65 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
-
-type FieldError = { username?: string[]; email?: string[] };
+import { useRouter, useSearchParams } from "next/navigation";
 
 export function SignInPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const from = searchParams.get("from") || "/dashboard";
+
   const [loading, setLoading] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<FieldError>({});
-  const [globalError, setGlobalError] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setFieldErrors({});
-    setGlobalError("");
+  // Quick preset fills for testability
+  function fillPreset(pEmail: string, pPass: string) {
+    setEmail(pEmail);
+    setPassword(pPass);
+    setError("");
+  }
 
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const payload = {
-      username: String(data.get("username") ?? "").trim(),
-      email: String(data.get("email") ?? "").trim(),
-    };
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError("");
 
-    // Client-side pre-check
-    const clientErrors: FieldError = {};
-    if (payload.username.length < 2)
-      clientErrors.username = ["Username must be at least 2 characters."];
-    if (!payload.email.includes("@"))
-      clientErrors.email = ["Enter a valid email address."];
-    if (Object.keys(clientErrors).length > 0) {
-      setFieldErrors(clientErrors);
+    if (!email || !email.includes("@")) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+    if (!password) {
+      setError("Please enter your password.");
       return;
     }
 
     setLoading(true);
     try {
-      const response = await fetch("/api/signin", {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ email, password }),
       });
 
-      const body = (await response.json()) as {
-        error?: string;
-        issues?: FieldError;
-      };
-
-      if (!response.ok) {
-        if (body.issues) {
-          setFieldErrors(body.issues);
-        } else {
-          setGlobalError(
-            body.error ?? "Unable to sign in. Please try again.",
-          );
-        }
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Authentication failed.");
         return;
       }
 
       setSuccess(true);
-      // Redirect to the case board after a short delay
-      setTimeout(() => router.push("/"), 1500);
+      setTimeout(() => {
+        if (data.user?.role === "admin") {
+          router.push("/admin");
+        } else {
+          router.push(from);
+        }
+        router.refresh();
+      }, 800);
     } catch {
-      setGlobalError("A network error occurred. Please try again.");
+      setError("A network error occurred. Please check your connection.");
     } finally {
       setLoading(false);
     }
@@ -82,10 +78,10 @@ export function SignInPage() {
         </div>
         <div className="login-principle">
           <p>NyayaSetu</p>
-          <strong>AI assists.</strong>
-          <strong>Human Judge decides.</strong>
+          <strong>Institutional Integrity.</strong>
+          <strong>Human Judicial Authority.</strong>
           <span>
-            Judicial case management, with the Court always in control.
+            Secure digital access for citizens, verified advocates, and judicial registry officials.
           </span>
         </div>
       </section>
@@ -98,113 +94,144 @@ export function SignInPage() {
         </Link>
 
         <div className="login-copy">
-          <p className="eyebrow">Secure judicial workspace</p>
-          <h1>Welcome back</h1>
-          <p>Sign in to open your case board and the Court&apos;s working record.</p>
+          <p className="eyebrow">Portal Authentication</p>
+          <h1>Welcome Back</h1>
+          <p>Sign in with your registered email and secure password.</p>
+        </div>
+
+        {/* Quick Demo Credentials Assistant */}
+        <div
+          style={{
+            margin: "20px 0 10px",
+            padding: "12px 14px",
+            background: "var(--sage-50)",
+            border: "1px solid var(--line)",
+            borderRadius: "4px",
+            fontSize: "11.5px",
+          }}
+        >
+          <strong style={{ display: "block", marginBottom: "6px", color: "var(--burgundy)" }}>
+            ⚡ Quick Demo Logins:
+          </strong>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="button secondary"
+              style={{ fontSize: "10.5px", padding: "4px 7px" }}
+              onClick={() => fillPreset("aarav.mehta@example.com", "Password123!")}
+            >
+              Citizen (Aarav)
+            </button>
+            <button
+              type="button"
+              className="button secondary"
+              style={{ fontSize: "10.5px", padding: "4px 7px" }}
+              onClick={() => fillPreset("priya.menon@bar.example", "Password123!")}
+            >
+              Advocate (Priya)
+            </button>
+            <button
+              type="button"
+              className="button secondary"
+              style={{ fontSize: "10.5px", padding: "4px 7px" }}
+              onClick={() => fillPreset("justice.sen@court.gov.in", "Password123!")}
+            >
+              Judge (Justice Sen)
+            </button>
+            <button
+              type="button"
+              className="button secondary"
+              style={{ fontSize: "10.5px", padding: "4px 7px" }}
+              onClick={() => fillPreset("admin@nyayasetu.gov.in", "AdminPass123!")}
+            >
+              Admin (Registry)
+            </button>
+          </div>
         </div>
 
         {success ? (
           <div className="signin-success" role="status">
-            <span className="signin-success-icon" aria-hidden="true">✓</span>
-            <strong>Signed in successfully.</strong>
-            <p>Opening your case board…</p>
+            <span className="signin-success-icon" aria-hidden="true">
+              ✓
+            </span>
+            <strong>Authenticated successfully.</strong>
+            <p>Directing to your secure dashboard…</p>
           </div>
         ) : (
-          <form
-            className="login-form"
-            onSubmit={handleSubmit}
-            noValidate
-            aria-label="Sign-in form"
-          >
-            {/* Username */}
-            <label htmlFor="signin-username">
-              Name
+          <form className="login-form" onSubmit={handleSubmit} noValidate>
+            <label className="form-label" htmlFor="login-email">
+              Email Address
               <input
-                id="signin-username"
-                name="username"
-                type="text"
-                autoComplete="name"
-                placeholder="Justice A. Kumar"
-                required
-                minLength={2}
-                maxLength={80}
-                aria-describedby={
-                  fieldErrors.username ? "signin-username-error" : undefined
-                }
-                aria-invalid={fieldErrors.username ? "true" : undefined}
-                disabled={loading}
-              />
-              {fieldErrors.username && (
-                <span
-                  id="signin-username-error"
-                  className="field-error"
-                  role="alert"
-                >
-                  {fieldErrors.username[0]}
-                </span>
-              )}
-            </label>
-
-            {/* Email */}
-            <label htmlFor="signin-email">
-              Official email address
-              <input
-                id="signin-email"
-                name="email"
+                id="login-email"
                 type="email"
-                autoComplete="email"
-                placeholder="name@court.gov.in"
                 required
-                maxLength={254}
-                aria-describedby={
-                  fieldErrors.email ? "signin-email-error" : undefined
-                }
-                aria-invalid={fieldErrors.email ? "true" : undefined}
+                className="form-input"
+                placeholder="name@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
               />
-              {fieldErrors.email && (
-                <span
-                  id="signin-email-error"
-                  className="field-error"
-                  role="alert"
-                >
-                  {fieldErrors.email[0]}
-                </span>
-              )}
             </label>
 
-            {globalError && (
+            <label className="form-label" htmlFor="login-password">
+              Password
+              <div className="password-field-wrap">
+                <input
+                  id="login-password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  className="form-input"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  className="password-toggle-btn"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+            </label>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <Link href="/forgot-password" className="text-link" style={{ fontSize: "12px" }}>
+                Forgot your password?
+              </Link>
+            </div>
+
+            {error && (
               <div className="inline-notice error" role="alert">
-                {globalError}
+                {error}
               </div>
             )}
 
-            <button
-              className="button primary login-submit"
-              type="submit"
-              disabled={loading}
-              aria-busy={loading}
-            >
+            <button className="button primary login-submit" type="submit" disabled={loading}>
               {loading ? (
                 <>
-                  <span className="spinner-sm" aria-hidden="true" />
-                  Signing in…
+                  <span className="spinner-sm" aria-hidden="true" /> Signing in…
                 </>
               ) : (
                 <>
-                  Sign in securely <span aria-hidden="true">→</span>
+                  Sign In Securely <span aria-hidden="true">&rarr;</span>
                 </>
               )}
             </button>
+
+            <div style={{ textAlign: "center", marginTop: "14px", fontSize: "12.5px", color: "var(--muted)" }}>
+              Don&apos;t have an account yet?{" "}
+              <Link href="/register" className="text-link">
+                Register for Free
+              </Link>
+            </div>
           </form>
         )}
 
-        <p id="access-support" className="login-help">
-          This is a protected workspace. For account access or assistance,
-          contact the registry administrator.
-        </p>
         <p className="login-footer">
-          NyayaSetu · Respectful technology for human judgment
+          NyayaSetu &bull; Institutional technology for equal justice under law
         </p>
       </section>
     </main>

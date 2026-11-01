@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -10,6 +11,8 @@ export function AdminLoginPage() {
   const configError = searchParams.get("error") === "config";
 
   const [loading, setLoading] = useState(false);
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(
     configError
       ? "Admin authentication environment variables are not configured. Contact the system administrator."
@@ -19,11 +22,6 @@ export function AdminLoginPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-
-    const form = event.currentTarget;
-    const password = String(
-      new FormData(form).get("admin-password") ?? "",
-    );
 
     if (!password) {
       setError("Password is required.");
@@ -67,21 +65,48 @@ export function AdminLoginPage() {
         <div className="login-principle">
           <p>NyayaSetu</p>
           <strong>Registry administration</strong>
-          <span>Secure access to judicial system records and audit data.</span>
+          <span>Secure access to judicial system records, legal requests, and audit data.</span>
         </div>
       </section>
 
       <section className="login-panel">
-        <div className="login-brand" aria-label="NyayaSetu Admin">
+        <Link href="/" className="login-brand" aria-label="Return to NyayaSetu">
           <span>⚖</span>
           <b>Nyaya</b>
           <em>Setu</em>
-        </div>
+        </Link>
 
         <div className="login-copy">
-          <p className="eyebrow">Protected administration area</p>
-          <h1>Admin sign in</h1>
-          <p>Enter the registry administration password to continue.</p>
+          <p className="eyebrow">Protected Administration Area</p>
+          <h1>Admin Sign In</h1>
+          <p>Enter the registry administration password to access the control center.</p>
+        </div>
+
+        {/* Quick fill hint for testing */}
+        <div
+          style={{
+            margin: "18px 0 10px",
+            padding: "10px 14px",
+            background: "var(--sage-50)",
+            border: "1px solid var(--line)",
+            borderRadius: "4px",
+            fontSize: "11.5px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <span>
+            Default admin password: <code>AdminPass123!</code>
+          </span>
+          <button
+            type="button"
+            className="button secondary"
+            style={{ fontSize: "10px", padding: "3px 8px" }}
+            onClick={() => setPassword("AdminPass123!")}
+          >
+            Fill Password
+          </button>
         </div>
 
         <form
@@ -91,17 +116,30 @@ export function AdminLoginPage() {
           aria-label="Admin login form"
         >
           <label htmlFor="admin-password">
-            Administrator password
-            <input
-              id="admin-password"
-              name="admin-password"
-              type="password"
-              autoComplete="current-password"
-              placeholder="Enter admin password"
-              required
-              disabled={loading || configError}
-              aria-invalid={error ? "true" : undefined}
-            />
+            Administrator Password
+            <div className="password-field-wrap">
+              <input
+                id="admin-password"
+                name="admin-password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                placeholder="Enter admin password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+                aria-invalid={error ? "true" : undefined}
+                className="form-input"
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </div>
           </label>
 
           {error && (
@@ -113,7 +151,7 @@ export function AdminLoginPage() {
           <button
             className="button primary login-submit"
             type="submit"
-            disabled={loading || configError}
+            disabled={loading}
             aria-busy={loading}
           >
             {loading ? (
@@ -123,7 +161,7 @@ export function AdminLoginPage() {
               </>
             ) : (
               <>
-                Access admin panel <span aria-hidden="true">→</span>
+                Access Admin Panel <span aria-hidden="true">&rarr;</span>
               </>
             )}
           </button>
@@ -133,7 +171,7 @@ export function AdminLoginPage() {
           Admin access is restricted to authorised registry administrators only.
         </p>
         <p className="login-footer">
-          NyayaSetu · Respectful technology for human judgment
+          NyayaSetu &bull; Respectful technology for human judgment
         </p>
       </section>
     </main>

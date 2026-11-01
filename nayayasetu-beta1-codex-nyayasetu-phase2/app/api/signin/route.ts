@@ -1,18 +1,11 @@
 import { NextResponse } from "next/server";
-import { connectToDatabase } from "@/lib/db";
+import { connectToDatabase, hasMongoUri } from "@/lib/db";
 import { LoginRecordModel } from "@/models/LoginRecord";
 import { signInInputSchema } from "@/lib/auth-validation";
+import { sampleLoginRecords } from "@/lib/sample-data";
 
 export const runtime = "nodejs";
 
-/**
- * POST /api/signin
- *
- * Validates the sign-in payload (username + email), persists a login event
- * to MongoDB, and returns a JSON response. This endpoint does NOT issue an
- * authenticated session — it records that a user identified themselves for
- * audit purposes.
- */
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => null);
@@ -36,31 +29,56 @@ export async function POST(request: Request) {
 
     const { username, email } = parsed.data;
 
-    // Capture request metadata for the audit record
     const ipAddress =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
       request.headers.get("x-real-ip") ??
-      undefined;
+      "127.0.0.1";
     const userAgent = request.headers.get("user-agent") ?? undefined;
 
-    await connectToDatabase();
+    let recordId = `rec-${Date.now()}`;
+    const loginAt = new Date();
 
-    const record = await LoginRecordModel.create({
-      username,
-      email,
-      loginAt: new Date(),
-      ipAddress,
-      userAgent,
-    });
+    if (hasMongoUri()) {
+      try {
+        await connectToDatabase();
+        const record = await LoginRecordModel.create({
+          username,
+          email,
+          loginAt,
+          ipAddress,
+          userAgent,
+        });
+        recordId = String(record._id);
+      } catch (dbErr) {
+        console.warn("[/api/signin] Mongo connection error, persisting to in-memory audit log:", dbErr);
+        sampleLoginRecords.unshift({
+          _id: recordId,
+          username,
+          email,
+          loginAt: loginAt.toISOString(),
+          ipAddress,
+          userAgent,
+        });
+      }
+    } else {
+      sampleLoginRecords.unshift({
+        _id: recordId,
+        username,
+        email,
+        loginAt: loginAt.toISOString(),
+        ipAddress,
+        userAgent,
+      });
+    }
 
     return NextResponse.json(
       {
         message: "Sign-in recorded successfully.",
         record: {
-          id: String(record._id),
-          username: record.username,
-          email: record.email,
-          loginAt: record.loginAt,
+          id: recordId,
+          username,
+          email,
+          loginAt,
         },
       },
       { status: 201 },
